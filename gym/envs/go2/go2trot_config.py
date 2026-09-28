@@ -97,10 +97,10 @@ class Go2TrotCfg(LeggedRobotCfg):
     class control(LeggedRobotCfg.control):
         # * PD Drive parameters:
         stiffness = {"hip": 20.0, "thigh": 20.0, "calf": 20.0}
-        damping = {"hip": 0.5, "thigh": 0.5, "calf": 0.5}
+        damping = {"hip": 1.2, "thigh": 1.2, "calf": 1.0}
         ctrl_frequency = 100
         desired_sim_frequency = 100
-        gait_freq = [1.0, 3.0]  # oscillator frequency range [Hz]
+        gait_freq = [1.0, 1.5]  # oscillator frequency range [Hz]
         # Cycle offsets define a trot: front-left/rear-right move together,
         # half a cycle away from front-right/rear-left.
         gait_phase_offsets = {
@@ -123,9 +123,10 @@ class Go2TrotCfg(LeggedRobotCfg):
         var = 1.0
 
         class ranges:
-            lin_vel_x = [-1.0, 0.0, 1.0, 3.0]
+            # lin_vel_x = [-1.0, 0.0, 1.0, 3.0]
+            lin_vel_x = [-1.0, -0.5, 0.0, 0.5, 1.0]
             lin_vel_y = 1.0  # max [m/s]
-            yaw_vel = 3  # max [rad/s]
+            yaw_vel = 2  # max [rad/s] #NOTE: aiming for smaller, more robust slow policy, right?
 
     class push_robots:
         toggle = True
@@ -169,6 +170,21 @@ class Go2TrotCfg(LeggedRobotCfg):
         max_contact_force = 600.0
         base_height_target = 0.9 * BASE_HEIGHT_REF
         tracking_sigma = 0.25
+
+        # Reward-only error divisors for the exponential-kernel terms: each
+        # uses e = x / s, with the steepest reward slope at the physical error
+        # x* = s * sqrt(tracking_sigma / 2) ~= 0.35 * s. Decrease s if a
+        # term's kernel overlay is saturated, increase it if dead. Kept apart
+        # from `scaling`, which also normalizes the policy's observations.
+        # Defaults reproduce the rewards from before this split.
+        class reward_scales:
+            tracking_lin_vel = 1.0  # [-], error already divided by (1 + |cmd|)
+            tracking_ang_vel = 2.5  # [rad/s]
+            orientation = 1.0  # [-], projected gravity xy
+            min_base_height = 0.3  # [m]
+            ang_vel_xy = 0.3  # [rad/s]
+            dof_vel = 4 * [2.0, 2.0, 4.0]  # [rad/s], hip/thigh/calf
+            dof_near_home = 4 * [1.0472, 2.53075, 0.94247]  # [rad]
 
     class scaling(LeggedRobotCfg.scaling):
         # Canonical RobotLayout order is FL, FR, RL, RR, with
@@ -252,23 +268,23 @@ class Go2TrotRunnerCfg(LeggedRobotRunnerCfg):
         class reward:
             class weights:
                 tracking_lin_vel = 4.0
-                tracking_ang_vel = 2.0
+                tracking_ang_vel = 1.0
                 lin_vel_z = 0.0
                 ang_vel_xy = 0.01
-                orientation = 1.0
+                orientation = 3.0
                 torques = 5.0e-6
                 dof_vel = 0.0
-                min_base_height = 0.5
-                action_rate = 0.25
+                min_base_height = 3.0 # up from 0.5
+                action_rate = 1.0
                 action_rate2 = 0.025
-                stand_still = 0.0
+                stand_still = 0.0 # stand still weight
                 dof_pos_limits = 0.0
                 feet_contact_forces = 0.0
-                dof_near_home = 0.0
+                dof_near_home = 0.05
                 # Preserve the old combined term's approximate +/-0.625 range,
                 # while making both stance feet necessary for positive credit.
-                trot_support = 0.625
-                swing_contact = 1.25
+                trot_support = 1.5
+                swing_contact = 0.85
 
             class termination_weight:
                 termination = 0.01

@@ -2,13 +2,25 @@ import torch
 
 from gym.utils.sampling import torch_rand_float
 from gym.utils.sampling import masked_update
+from gym.utils.helpers import class_to_dict
 
 from gym.envs.base.legged_robot import LeggedRobot
 
 
 class Go2Trot(LeggedRobot):
+    # Kernel exponent p for each _error_* term, k(e) = exp(-|e|^p / sigma).
+    # Terms not listed use p = 2. tracking_ang_vel squares its error before
+    # _sqrdexp squares it again, so its kernel is quartic.
+    kernel_p = {"tracking_ang_vel": 4}
+
     def __init__(self, cfg, device, headless, backend):
         super().__init__(cfg, device, headless, backend)
+
+    def _parse_cfg(self, cfg):
+        super()._parse_cfg(cfg)
+        self.reward_scales = class_to_dict(
+            self.cfg.reward_settings.reward_scales, self.device
+        )
 
     def _init_buffers(self):
         super()._init_buffers()
@@ -205,50 +217,67 @@ class Go2Trot(LeggedRobot):
         """Penalize z axis base linear velocity with squared exp"""
         return self._sqrdexp(self.base_lin_vel[:, 2] / self.scales["base_lin_vel"])
 
+    # Kernel terms: each _reward_* applies exp(-|e|^p / sigma) to its _error_*,
+    # where e = x / reward_scales[name] (see reward_settings.reward_scales).
+
+    def _error_ang_vel_xy(self):
+        """Roll/pitch rate error before squared exponential"""
+        return self.base_ang_vel[:, :2] / self.reward_scales["ang_vel_xy"]
+
     def _reward_ang_vel_xy(self):
         """Penalize xy axes base angular velocity"""
-        error = self._sqrdexp(self.base_ang_vel[:, :2] / self.scales["base_ang_vel"])
-        return torch.sum(error, dim=1)
+        return torch.sum(self._sqrdexp(self._error_ang_vel_xy()), dim=1)
+
+    def _error_orientation(self):
+        """Orientation error term before exponential"""
+        return self.projected_gravity[:, :2] / self.reward_scales["orientation"]
 
     def _reward_orientation(self):
         """Penalize non-flat base orientation"""
-        error = (
-            torch.square(self.projected_gravity[:, :2])
-            / self.cfg.reward_settings.tracking_sigma
-        )
-        return torch.sum(torch.exp(-error), dim=1)
+        return torch.sum(self._sqrdexp(self._error_orientation()), dim=1)
+
+    def _error_min_base_height(self):
+        """Min base height error term before squared exponential"""
+        error = self.base_height - self.cfg.reward_settings.base_height_target
+        error = error / self.reward_scales["min_base_height"]
+        return torch.clamp(error, max=0, min=None).flatten()
 
     def _reward_min_base_height(self):
         """Squared exponential saturating at base_height target"""
-        error = self.base_height - self.cfg.reward_settings.base_height_target
-        error /= self.scales["base_height"]
-        error = torch.clamp(error, max=0, min=None).flatten()
-        return self._sqrdexp(error)
+        return self._sqrdexp(self._error_min_base_height())
+
+    def _error_tracking_lin_vel(self):
+        """Linear velocity error before exponential"""
+        error = self.commands[:, :2] - self.base_lin_vel[:, :2]
+        # * scale by (1+|cmd|): if cmd=0, no scaling.
+        error = error / (1.0 + torch.abs(self.commands[:, :2]))
+        return torch.linalg.norm(error, dim=1) / self.reward_scales["tracking_lin_vel"]
 
     def _reward_tracking_lin_vel(self):
         """Tracking of linear velocity commands (xy axes)"""
-        # just use lin_vel?
-        error = self.commands[:, :2] - self.base_lin_vel[:, :2]
-        # * scale by (1+|cmd|): if cmd=0, no scaling.
-        error *= 1.0 / (1.0 + torch.abs(self.commands[:, :2]))
-        error = torch.sum(torch.square(error), dim=1)
-        return torch.exp(-error / self.cfg.reward_settings.tracking_sigma)
+        return self._sqrdexp(self._error_tracking_lin_vel())
+
+    def _error_tracking_ang_vel(self):
+        """Yaw rate error u; the reward applies exp(-u^4 / sigma)"""
+        error = self.commands[:, 2] - self.base_ang_vel[:, 2]
+        return error / self.reward_scales["tracking_ang_vel"]
 
     def _reward_tracking_ang_vel(self):
         """Tracking of angular velocity commands (yaw)"""
-        ang_vel_error = torch.square(
-            (self.commands[:, 2] - self.base_ang_vel[:, 2]) / 2.5
-        )
-        return self._sqrdexp(ang_vel_error)
+        return self._sqrdexp(torch.square(self._error_tracking_ang_vel()))
+
+    def _error_dof_vel(self):
+        """Joint velocity error before squared exponential"""
+        return self.dof_vel / self.reward_scales["dof_vel"]
 
     def _reward_dof_vel(self):
         """Penalize dof velocities"""
-        return torch.sum(self._sqrdexp(self.dof_vel / self.scales["dof_vel"]), dim=1)
+        return torch.sum(self._sqrdexp(self._error_dof_vel()), dim=1)
+
+    def _error_dof_near_home(self):
+        """Joint position error from home before squared exponential"""
+        error = self.dof_pos - self.default_dof_pos
+        return error / self.reward_scales["dof_near_home"]
 
     def _reward_dof_near_home(self):
-        return torch.sum(
-            self._sqrdexp(
-                (self.dof_pos - self.default_dof_pos) / self.scales["dof_pos_obs"]
-            ),
-            dim=1,
-        )
+        return torch.sum(self._sqrdexp(self._error_dof_near_home()), dim=1)

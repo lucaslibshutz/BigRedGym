@@ -6,6 +6,7 @@ from learning.utils import Logger
 
 from .BaseRunner import BaseRunner
 from learning.storage import DictStorage
+from learning.utils import kernel_diagnostics
 
 logger = Logger()
 storage = DictStorage()
@@ -19,6 +20,11 @@ class OnPolicyRunner(BaseRunner):
             f"[OnPolicyRunner] num_steps_per_env={self.num_steps_per_env}"
             f" (batch_size={self.alg_cfg['batch_size']}, num_envs={env.num_envs})"
         )
+        self.error_functions = {
+            m.replace("_error_", ""): getattr(self.env, m)
+            for m in dir(self.env) if m.startswith("_error_")
+        }
+        self.kernel_samples = {name: [] for name in self.error_functions}
 
     def learn(self, states_to_log_dict=None):
         n_policy_steps = int((1 / self.env.dt) / self.actor_cfg["frequency"])
@@ -63,6 +69,7 @@ class OnPolicyRunner(BaseRunner):
         for self.it in range(self.it + 1, tot_iter + 1):
             logger.tic("iteration")
             logger.tic("collection")
+            plot_kernels = self.it % self.cfg.get("kernel_plot_interval", 25) == 0
 
             # * Simulate environment and log states
             if states_to_log_dict is not None:
@@ -89,6 +96,12 @@ class OnPolicyRunner(BaseRunner):
                     )
                     for step in range(n_policy_steps):
                         self.env.step()
+                        if plot_kernels:
+                            alive = ~self.env.terminated
+                            for name, fn in self.error_functions.items():
+                                self.kernel_samples[name].append(
+                                    fn()[alive].abs().flatten()
+                                )
                         # put reward integration here
                         self.update_rewards_dict(rewards_dict, step)
 
@@ -125,6 +138,9 @@ class OnPolicyRunner(BaseRunner):
             logger.toc("learning")
             logger.log_all_categories()
 
+            if plot_kernels:
+                self.log_kernel_diagnostics()
+
             logger.finish_iteration()
             logger.toc("iteration")
             logger.toc("runtime")
@@ -133,6 +149,26 @@ class OnPolicyRunner(BaseRunner):
             if self.it % self.save_interval == 0:
                 self.save()
         self.save()
+
+    def log_kernel_diagnostics(self):
+        """Overlay plots of visited reward-kernel errors (see _error_*)."""
+        sigma = self.env.cfg.reward_settings.tracking_sigma
+        kernel_p = getattr(self.env, "kernel_p", {})
+        figures = {}
+        for name, chunks in self.kernel_samples.items():
+            if not chunks:
+                continue
+            e_abs = torch.cat(chunks)
+            chunks.clear()
+            if e_abs.numel() == 0:  # every env terminated this iteration
+                continue
+            p = kernel_p.get(name, 2)
+            stats = kernel_diagnostics.stats(e_abs, p, sigma)
+            density, edges, overflow = kernel_diagnostics.histogram(e_abs, p, sigma)
+            figures[f"kernel/{name}"] = kernel_diagnostics.overlay_figure(
+                name, density, edges, p, sigma, stats, overflow, self.it
+            )
+        logger.log_extra(figures=figures)
 
     @torch.no_grad
     def burn_in_normalization(self, n_iterations=100):

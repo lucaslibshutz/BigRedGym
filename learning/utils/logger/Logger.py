@@ -1,11 +1,20 @@
 import json
 import os
 
+import numpy as np
 import wandb
+from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from .EpisodicLogs import EpisodicLogs
 from .PerIterationLogs import PerIterationLogs
 from .TimeKeeper import TimeKeeper
+
+
+def _render(fig):
+    """Rasterize a matplotlib Figure without pyplot (no global backend state)."""
+    canvas = FigureCanvasAgg(fig)
+    canvas.draw()
+    return np.asarray(canvas.buffer_rgba())[..., :3].copy()
 
 
 class Logger:
@@ -36,6 +45,12 @@ class Logger:
         # Optional local per-iteration vitals sink (independent of wandb) —
         # one JSON object per line at <log_dir>/vitals.jsonl.
         self.log_dir = log_dir
+        # Extra per-iteration values from outside the logger, flushed by
+        # finish_iteration(): scalars go to wandb and vitals.jsonl; histograms
+        # and figures are wandb-only.
+        self.extra_scalars = {}
+        self.extra_histograms = {}
+        self.extra_figures = {}
         self.initialized = True
 
     def register_category(self, category, target, attribute_list):
@@ -51,12 +66,24 @@ class Logger:
         self.reward_logs.finish_step(dones)
         self.step_counter += 1
 
+    def log_extra(self, scalars=None, histograms=None, figures=None):
+        """Queue values for this iteration's single wandb.log / vitals write.
+
+        histograms: {key: (density, bin_edges)}; figures: {key: matplotlib Figure}.
+        """
+        self.extra_scalars.update(scalars or {})
+        self.extra_histograms.update(histograms or {})
+        self.extra_figures.update(figures or {})
+
     def finish_iteration(self):
         self.iteration_counter += 1
         if wandb.run is not None:
             self.log_to_wandb()
         if self.log_dir is not None:
             self.log_to_file()
+        self.extra_scalars.clear()
+        self.extra_histograms.clear()
+        self.extra_figures.clear()
         return None
 
     @staticmethod
@@ -84,6 +111,7 @@ class Logger:
         record["t_iteration"] = float(self.timer.get_time("iteration"))
         record["t_collection"] = float(self.timer.get_time("collection"))
         record["t_learning"] = float(self.timer.get_time("learning"))
+        record.update(self.extra_scalars)
         return record
 
     def log_to_file(self):
@@ -182,7 +210,15 @@ class Logger:
             for key, val in self.iteration_logs.get_all_logs(category).items()
         }
 
-        wandb.log({**averages, **category_logs})
+        media = {
+            key: wandb.Histogram(np_histogram=(density.tolist(), edges.tolist()))
+            for key, (density, edges) in self.extra_histograms.items()
+        }
+        media.update(
+            {key: wandb.Image(_render(fig)) for key, fig in self.extra_figures.items()}
+        )
+
+        wandb.log({**averages, **category_logs, **self.extra_scalars, **media})
 
     def tic(self, category="default"):
         self.timer.tic(category)
