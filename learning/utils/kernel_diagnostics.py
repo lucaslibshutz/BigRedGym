@@ -70,7 +70,7 @@ def overlay_figure(name, density, edges, p, sigma, stats_dict, overflow, iterati
     ax.set_title(
         f"{name} (p={p})  it {iteration}   U={stats_dict['U']:.2f}  "
         f"sat={stats_dict['f_sat']:.2f}  dead={stats_dict['f_dead']:.2f}  "
-        f"overflow={overflow:.2f}",
+        f"overflow={overflow:.2f}  e_typ={stats_dict['q50']:.3f}",
         fontsize=9,
     )
     handles = ax.get_legend_handles_labels()
