@@ -264,7 +264,7 @@ class Go2Trot(LeggedRobot):
 
     def _reward_tracking_ang_vel(self):
         """Tracking of angular velocity commands (yaw)"""
-        return self._sqrdexp(torch.square(self._error_tracking_ang_vel()))
+        return self._sqrdexp(self._error_tracking_ang_vel())
 
     def _error_dof_vel(self):
         """Joint velocity error before squared exponential"""

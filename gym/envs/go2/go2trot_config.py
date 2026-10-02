@@ -178,10 +178,10 @@ class Go2TrotCfg(LeggedRobotCfg):
         # from `scaling`, which also normalizes the policy's observations.
         # Defaults reproduce the rewards from before this split.
         class reward_scales:
-            tracking_lin_vel = 1.0  # [-], error already divided by (1 + |cmd|)
-            tracking_ang_vel = 2.5  # [rad/s]
-            orientation = 1.0  # [-], projected gravity xy
-            min_base_height = 0.3  # [m]
+            tracking_lin_vel = 0.42  # [-], error already divided by (1 + |cmd|)
+            tracking_ang_vel = 0.76  # [rad/s]
+            orientation = 0.028  # [-], projected gravity xy
+            min_base_height = 0.048  # [m]
             ang_vel_xy = 0.3  # [rad/s]
             dof_vel = 4 * [2.0, 2.0, 4.0]  # [rad/s], hip/thigh/calf
             dof_near_home = 4 * [1.0472, 2.53075, 0.94247]  # [rad]
