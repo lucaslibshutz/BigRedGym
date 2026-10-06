@@ -5,7 +5,7 @@ from gym.envs.base.legged_robot_config import (
     LeggedRobotRunnerCfg,
 )
 
-BASE_HEIGHT_REF = 0.4
+BASE_HEIGHT_REF = 0.6
 
 GO2_DOF_NAMES = [
     "FL_hip_joint",
@@ -180,9 +180,9 @@ class Go2TrotCfg(LeggedRobotCfg):
         class reward_scales:
             tracking_lin_vel = 0.42  # [-], error already divided by (1 + |cmd|)
             tracking_ang_vel = 0.76  # [rad/s]
-            orientation = 0.028  # [-], projected gravity xy
+            orientation = 0.1  # [-], projected gravity xy
             min_base_height = 0.048  # [m]
-            ang_vel_xy = 0.3  # [rad/s]
+            ang_vel_xy = 1.5  # [rad/s]
             dof_vel = 4 * [2.0, 2.0, 4.0]  # [rad/s], hip/thigh/calf
             dof_near_home = 4 * [1.0472, 2.53075, 0.94247]  # [rad]
 

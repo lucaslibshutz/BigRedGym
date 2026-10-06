@@ -11,7 +11,7 @@ class Go2Trot(LeggedRobot):
     # Kernel exponent p for each _error_* term, k(e) = exp(-|e|^p / sigma).
     # Terms not listed use p = 2. tracking_ang_vel squares its error before
     # _sqrdexp squares it again, so its kernel is quartic.
-    kernel_p = {"tracking_ang_vel": 4}
+    kernel_p = {"tracking_ang_vel": 2}
 
     def __init__(self, cfg, device, headless, backend):
         super().__init__(cfg, device, headless, backend)
