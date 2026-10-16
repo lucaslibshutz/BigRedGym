@@ -23,7 +23,7 @@ unitree_sdk = [
 ]
 # VSim: licensed local engine for Linux x86_64 / Python 3.11.
 # See thirdparty/README.md; install with uv sync --frozen --extra vsim.
-# Requires system libczmq4 and a valid node-locked license.
+# Requires system libczmq4 + libassimp5 and a valid node-locked license.
 vsim = [
     "vlearn; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.11'",
 ]
@@ -41,7 +41,7 @@ dev = [
 [tool.uv.sources]
 # Vendored in-repo (gitignored — see thirdparty/README.md for the drop-in
 # procedure on a new machine).
-vlearn = { path = "thirdparty/vlearn/vlearn-0.3.14+cu130-cp311-cp311-linux_x86_64.whl" }
+vlearn = { path = "thirdparty/vlearn/vlearn-0.3.15+cu130-cp311-cp311-linux_x86_64.whl" }
 unitree-sdk2py = { path = "thirdparty/unitree_sdk2_python", editable = true }
 
 [tool.q2.unitree-sdk]

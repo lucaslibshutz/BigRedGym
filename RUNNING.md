@@ -18,6 +18,31 @@ uv run --frozen scripts/train.py --task=go2trot --device=cuda:0 --headless
 - Steps per env per iteration = `algorithm.rollout_size // num_envs`
   (`learning/runners/on_policy_runner.py`). Scale `rollout_size` with `num_envs`.
 
+## VSim backend (optional, licensed)
+Setup, system libraries (`libczmq.so.4`, `libassimp.so.5`; Arch needs AUR
+workarounds) and license activation: [`thirdparty/README.md`](thirdparty/README.md).
+```
+uv sync --frozen --extra vsim
+uv run --frozen --extra vsim --env-file .env.vsim scripts/train.py --task mini_cheetah \
+    --backend vsim --device cuda:0 --num_envs 4096 --headless
+```
+- Play (vsim is CUDA-only, so `--device cuda:0` is required; the vlearn window
+  needs `thirdparty/vlearn/shaders/`):
+  `uv run --frozen --extra vsim --env-file .env.vsim scripts/play.py --task mini_cheetah --backend vsim --device cuda:0`
+  — loads the latest run/checkpoint under `logs/<experiment_name>/`; pick one with
+  `--load_run <dir> --checkpoint <iter>`. Keyboard teleop is on by default.
+- Upgrading the engine wheel: drop the new `.whl` into `thirdparty/vlearn/`, update
+  the `vlearn` path in `[tool.uv.sources]`, then `uv lock --upgrade-package vlearn`.
+  `--frozen` sync fails with "Distribution not found" until the lock is updated.
+- `pytest -m vsim` errors at setup by design (the `Q2_VSIM_TESTS` gate is deferred).
+  Smoke-test with a short training run instead (`--num_envs 256 --max_iterations 3
+  --disable_wandb`).
+- vlearn docs: there's a prebuilt Sphinx site at `thirdparty/vlearn/docs/vlearn-docs/html/`
+  (unzipped from `vlearn-docs.zip`). Serve it so search works (search fails over `file://`):
+  `python3 -m http.server 8765 --bind 127.0.0.1 -d thirdparty/vlearn/docs/vlearn-docs/html`
+  then open http://127.0.0.1:8765. Type stubs for IDE completion:
+  `thirdparty/vlearn/docs/stubs/vlearn_bindings.pyi`.
+
 ## Play
 ```
 uv run --frozen scripts/play.py --task=go2trot
