@@ -4,7 +4,7 @@ The vsim backend's engine (`vlearn`) is closed-source and licensed; its
 binaries cannot be committed (100 KB file cap + licensing). The `vlearn/`
 subdirectory holds the machine-local pieces, all gitignored:
 
-- `vlearn-0.3.14+cu130-cp311-cp311-linux_x86_64.whl` — the selected engine wheel
+- `vlearn-0.3.15+cu130-cp311-cp311-linux_x86_64.whl` — the selected engine wheel
   (from the vendor / the vlearn SDK repo). `[tool.uv.sources]` in
   pyproject.toml points here; install with `uv sync --frozen --extra vsim`.
   The CUDA 13.0 variant matches the locked Linux PyTorch build.
@@ -19,6 +19,32 @@ subdirectory holds the machine-local pieces, all gitignored:
 - `shaders/` + `assets/{VsimTile,Skybox}.png` — renderer files, needed only
   for the viewer (copied from the vlearn SDK repo root). Headless runs work
   without them.
+
+## System libraries
+
+The engine's native libs link against two system libraries the wheel does not
+bundle: `libczmq.so.4` (`libgym.so`, `librender.so`) and `libassimp.so.5`
+(`libvsimdynamics.so`, `libgym.so`, `librender.so`). Without them,
+`import vlearn` fails with `OSError: libassimp.so.5: cannot open shared object
+file`. Check with:
+
+```bash
+ldconfig -p | grep -E 'libczmq.so.4|libassimp.so.5'
+```
+
+- Ubuntu 24.04: `sudo apt install libczmq4 libassimp5`.
+- Arch: both come from the AUR. The `assimp` package in `extra` is 6.x
+  (`libassimp.so.6`) and does not satisfy the `.so.5` soname.
+  - `czmq`: its `check()` flakily times out in the `zsock` test; build with
+    `yay -S --mflags --nocheck czmq`.
+  - `libassimp5-compat` (5.4.3-1): fails with `fatal error: unzip.h` because
+    Arch's `minizip` installs headers under `/usr/include/minizip/` and its
+    `.pc` exports no `-I`. Add `-DASSIMP_BUILD_MINIZIP=ON` to the PKGBUILD's
+    cmake call (assimp's bundled `contrib/unzip`), then
+    `makepkg -f && sudo pacman -U libassimp5-compat-5.4.3-1-x86_64.pkg.tar.zst`.
+
+The vendor zip (~4.4 GB, zip64) trips Info-ZIP `unzip`'s overlapped-components
+"zip bomb" check falsely; extract it with `7z x` or `bsdtar -xf`.
 
 ## Install and activate
 

@@ -38,9 +38,9 @@ uv run --frozen --extra vsim --env-file .env.vsim scripts/train.py --task mini_c
   Smoke-test with a short training run instead (`--num_envs 256 --max_iterations 3
   --disable_wandb`).
 - vlearn docs: there's a prebuilt Sphinx site at `thirdparty/vlearn/docs/vlearn-docs/html/`
-  (unzipped from `vlearn-docs.zip`). Serve it so search works (search fails over `file://`):
-  `python3 -m http.server 8765 --bind 127.0.0.1 -d thirdparty/vlearn/docs/vlearn-docs/html`
-  then open http://127.0.0.1:8765. Type stubs for IDE completion:
+  (unzipped from `vlearn-docs.zip`). `uv run vsim-docs` serves it at http://127.0.0.1:8765
+  and opens a browser (`--port N`, `--no-browser`; Ctrl+C stops it). Serve rather than
+  open the files directly: Sphinx search fails over `file://`. Type stubs for IDE completion:
   `thirdparty/vlearn/docs/stubs/vlearn_bindings.pyi`.
 
 ## Play

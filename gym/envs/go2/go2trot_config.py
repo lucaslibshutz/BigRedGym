@@ -5,7 +5,7 @@ from gym.envs.base.legged_robot_config import (
     LeggedRobotRunnerCfg,
 )
 
-BASE_HEIGHT_REF = 0.6
+BASE_HEIGHT_REF = 0.34
 
 GO2_DOF_NAMES = [
     "FL_hip_joint",
@@ -180,8 +180,8 @@ class Go2TrotCfg(LeggedRobotCfg):
         class reward_scales:
             tracking_lin_vel = 0.42  # [-], error already divided by (1 + |cmd|)
             tracking_ang_vel = 0.76  # [rad/s]
-            orientation = 0.1  # [-], projected gravity xy
-            min_base_height = 0.048  # [m]
+            orientation = 0.15  # [-], projected gravity xy
+            min_base_height = 0.2  # [m]
             ang_vel_xy = 1.5  # [rad/s]
             dof_vel = 4 * [2.0, 2.0, 4.0]  # [rad/s], hip/thigh/calf
             dof_near_home = 4 * [1.0472, 2.53075, 0.94247]  # [rad]
@@ -190,7 +190,7 @@ class Go2TrotCfg(LeggedRobotCfg):
         # Canonical RobotLayout order is FL, FR, RL, RR, with
         # hip, thigh, calf inside each leg. Backends map native order to it.
         base_ang_vel = 0.3
-        base_lin_vel = BASE_HEIGHT_REF
+        base_lin_vel = 0.6 # [m/s]
         # dof_vel = 4 * [30.1, 30.1, 15.7]
         dof_vel = 4 * [2.0, 2.0, 4.0]
         base_height = 0.3
@@ -268,7 +268,7 @@ class Go2TrotRunnerCfg(LeggedRobotRunnerCfg):
         class reward:
             class weights:
                 tracking_lin_vel = 4.0
-                tracking_ang_vel = 1.0
+                tracking_ang_vel = 2.0
                 lin_vel_z = 0.0
                 ang_vel_xy = 0.01
                 orientation = 3.0
@@ -304,7 +304,7 @@ class Go2TrotRunnerCfg(LeggedRobotRunnerCfg):
         # Critic
         use_clipped_value_loss = True
         # Actor
-        entropy_coef = 0.01
+        entropy_coef = 0.003 # bounds the action_std (apparently)
         schedule = "adaptive"  # could be adaptive, fixed
         desired_kl = 0.01
         lr_range = [2e-5, 1e-2]
