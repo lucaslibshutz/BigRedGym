@@ -9,9 +9,12 @@ All of this is pure Python, so it is tested here with fakes: no GPU, no
 license, no window (runs in the default suite).
 """
 
+from types import SimpleNamespace
+
 import pytest
 import torch
 
+from gym.envs.base.vsim_backend import VSimBackend
 from gym.utils.interfaces.teleop_bindings import (
     BINDINGS,
     KEY_TO_ACTION,
@@ -37,15 +40,17 @@ class FakeRender:
         return key in self.held
 
 
-class FakeBackend:
+class FakeBackend(VSimBackend):
     def __init__(self):
-        self._render_hooks = []
+        super().__init__()
         self._viewer_key_callback = None
-        self.window_closed = False
-        self.escape_key = "<ESC>"  # stands in for vlearn's UserKey.Escape
-
-    def add_render_hook(self, fn):
-        self._render_hooks.append(fn)
+        # Match the vendor enum while exercising the real backend mapping.
+        # A separate fake special_keys table would hide unsupported enum names.
+        self._v = SimpleNamespace(
+            UserKey=SimpleNamespace(
+                Escape=object(), UpArrow=object(), DownArrow=object()
+            )
+        )
 
 
 class FakeEnv:
@@ -79,15 +84,21 @@ def test_bindings_avoid_vsim_reserved_keys():
 
 
 def test_both_interfaces_use_the_same_bindings():
-    """MuJoCo keycodes must be exactly ord() of the shared letters."""
-    assert KEYCODE_TO_ACTION == {ord(k): a for k, a in KEY_TO_ACTION.items()}
+    """Both adapters dispatch all actions in the shared table."""
+    for key, action in KEY_TO_ACTION.items():
+        if len(key) == 1:
+            assert KEYCODE_TO_ACTION[ord(key)] == action
     assert set(KEYCODE_TO_ACTION.values()) == set(BINDINGS.keys())
+    _, ui, _ = _make_vsim()
+    assert set(ui._key_to_action.values()) == set(BINDINGS.keys())
 
 
-def test_keys_are_unique_and_alphanumeric():
-    # vsim's is_key_down only accepts alphanumerics as strings.
+def test_keys_are_unique_letters_or_named_specials():
     assert len(set(BINDINGS.values())) == len(BINDINGS)
-    assert all(k.isalnum() and k.isupper() for k in BINDINGS.values())
+    assert all(
+        (len(k) == 1 and k.isalnum() and k.isupper()) or k in {"UP", "DOWN"}
+        for k in BINDINGS.values()
+    )
 
 
 # ── vsim: polling + edge detection ───────────────────────────────────────
@@ -125,6 +136,23 @@ def test_r_resets_once_per_press():
     assert env.timed_out.all()
 
 
+@pytest.mark.parametrize("key, action", [("UP", "up"), ("DOWN", "down")])
+def test_vsim_arrows_dispatch_on_rising_edges(key, action):
+    env, ui, render = _make_vsim()
+    actions = []
+    ui.commands.apply = actions.append
+    # The renderer requires an enum value, not the shared key-name string.
+    render.held = {env._backend.special_keys[key]}
+    for _ in range(3):
+        ui.poll(render)
+    assert actions == [action]
+    render.held.clear()
+    ui.poll(render)
+    render.held = {env._backend.special_keys[key]}
+    ui.poll(render)
+    assert actions == [action, action]
+
+
 def test_escape_and_window_close_set_exit():
     env, ui, render = _make_vsim()
     ui.poll(render)
@@ -135,7 +163,7 @@ def test_escape_and_window_close_set_exit():
     assert env.exit is True
 
     env2, ui2, render2 = _make_vsim()
-    env2._backend.window_closed = True
+    env2._backend._window_closed = True
     ui2.poll(render2)
     assert env2.exit is True
 
@@ -159,6 +187,15 @@ def test_mujoco_ignores_unbound_keys():
     before = env.commands.clone()
     ui._on_key(ord("Z"))  # not bound
     assert torch.equal(env.commands, before)
+
+
+@pytest.mark.parametrize("keycode, action", [(265, "up"), (264, "down")])
+def test_mujoco_arrows_dispatch(keycode, action):
+    ui = MujocoKeyboardInterface(FakeEnv())
+    actions = []
+    ui.commands.apply = actions.append
+    ui._on_key(keycode)
+    assert actions == [action]
 
 
 # ── Command semantics (shared by both) ───────────────────────────────────
@@ -201,6 +238,7 @@ def _pendulum_cfg(show_ui):
 
     from gym import GYM_ROOT_DIR
     from gym.envs.base.domain_randomization import DomainRandomizationCfg
+    from gym.envs.base.mujoco_config import MuJoCoCfg
 
     return types.SimpleNamespace(
         asset=types.SimpleNamespace(
@@ -219,6 +257,7 @@ def _pendulum_cfg(show_ui):
             terminate_after_contacts_on=[],
         ),
         domain_randomization=DomainRandomizationCfg(),
+        mujoco=MuJoCoCfg(),
         sim=types.SimpleNamespace(gravity=[0.0, 0.0, -9.81]),
         sim_dt=0.005,
         viewer=types.SimpleNamespace(show_ui=show_ui),

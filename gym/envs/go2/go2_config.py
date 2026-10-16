@@ -1,5 +1,3 @@
-import mujoco
-
 from gym.envs.base.legged_robot_config import (
     LeggedRobotCfg,
     LeggedRobotRunnerCfg,
@@ -86,7 +84,7 @@ class Go2Cfg(LeggedRobotCfg):
         stiffness = {"hip": 20.0, "thigh": 20.0, "calf": 20.0}
         damping = {"hip": 0.5, "thigh": 0.5, "calf": 0.5}
         ctrl_frequency = 100
-        desired_sim_frequency = 500
+        desired_sim_frequency = 100
 
     class commands:
         # * time before command are changed[s]
@@ -116,6 +114,9 @@ class Go2Cfg(LeggedRobotCfg):
 
     class asset(LeggedRobotCfg.asset):
         file = "{GYM_ROOT_DIR}/resources/robots/" + "go2/urdf/go2.urdf"
+        # Use the SDK's OBJ visuals; keep our URDF's complete physical model.
+        vsim_visual_mesh_dir = "{GYM_ROOT_DIR}/thirdparty/vlearn/assets/go2/assets"
+        mujoco_visual_model = "{GYM_ROOT_DIR}/thirdparty/vlearn/assets/go2/go2.xml"
         foot_name = "foot"
         penalize_contacts_on = ["calf"]
         terminate_after_contacts_on = ["base"]
@@ -144,32 +145,12 @@ class Go2Cfg(LeggedRobotCfg):
         base_ang_vel = 0.3
         base_lin_vel = BASE_HEIGHT_REF
         dof_vel = 4 * [2.0, 2.0, 4.0]
-        base_height = 0.3 / 2
-        dof_pos = 4 * [0.2, 0.3, 0.3]
+        base_height = 0.3
+        dof_pos = 4 * [1.0472, 2.53075, 0.94247]
         dof_pos_obs = dof_pos
-        dof_pos_target = 4 * [0.2, 0.3, 0.3]
-        tau_ff = 4 * [18, 18, 28]
+        dof_pos_target = [0.5 * x for x in dof_pos]
+        tau_ff = 4 * [23.7, 23.7, 45.43]
         commands = [3, 1, 3]
-
-    class mjspec_attributes:
-        # MuJoCo Warp allocates a fixed constraint buffer from this value and
-        # truncates constraints on overflow. Fallen/contact-rich poses reached
-        # 200 rows during training, so retain explicit headroom.
-        njmax = 256
-
-    class mjspec_geom_attributes:
-        # Fit to VSim's onset-aligned Go2 drop response at 500 Hz. The engines
-        # still respond to a ground crossing one MuJoCo step apart, but this
-        # matches the applied contact impulse instead of masking that staging.
-        solref = [0.005, 1.0]
-
-    class mjspec_option_attributes:
-        ccd_iterations = 50
-        # MuJoCo 3.11's native multi-contact CCD segfaults on a valid fallen
-        # Go2 pose involving overlapping lower-leg cylinders. Primitive
-        # contacts (including foot/ground) still retain their multi-point
-        # colliders when this general convex multi-CCD path is disabled.
-        disableflags = int(mujoco.mjtDisableBit.mjDSBL_MULTICCD)
 
 
 class Go2RunnerCfg(LeggedRobotRunnerCfg):
